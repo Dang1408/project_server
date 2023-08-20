@@ -2,14 +2,14 @@ from datetime import datetime
 
 from django.db import connection
 
-from .models import StockData
+from crawl_stock_data.models.stock_data_model import StockData
 
 
 def get_stock_data(symbol):
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT symbol, date_time, open, high, low, volume, close, adj_close FROM stock_data WHERE symbol = %s",
-            [symbol]
+            "SELECT symbol, date_time, open, high, low, volume, close FROM stock_data WHERE symbol = %s",
+            [symbol.upper()]
         )
         data = cursor.fetchall()
 
@@ -26,7 +26,6 @@ def get_stock_data(symbol):
             low=row[4],
             volume=row[5],
             close=row[6],
-            adj_close=row[7],
         )
         stock_data_list.append(stock_data_obj)
 
@@ -40,10 +39,10 @@ def get_stock_data_by_date(symbol, date_start, date_end):
 
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT symbol, date_time, open, high, low, volume, close, adj_close "
+            "SELECT symbol, date_time, open, high, low, volume, close "
             "FROM stock_data "
             "WHERE symbol = %s AND timestamp between %s AND %s",
-            [symbol, date_start, date_end]
+            [symbol.upper(), date_start, date_end]
         )
         data = cursor.fetchall()
 
@@ -59,12 +58,12 @@ def get_stock_data_by_date(symbol, date_start, date_end):
             high=row[3],
             low=row[4],
             volume=row[5],
-            close=row[6],
-            adj_close=row[7],
+            close=row[6]
         )
         stock_data_list.append(stock_data_obj)
 
     return stock_data_list
+
 
 def get_stock_data_by_date_drawl_chart(symbol, date_start, date_end):
     ##convert the date to timestamp
@@ -76,7 +75,7 @@ def get_stock_data_by_date_drawl_chart(symbol, date_start, date_end):
             "SELECT symbol, timestamp, open, high, low, volume, close "
             "FROM stock_data "
             "WHERE symbol = %s AND timestamp between %s AND %s order by timestamp asc",
-            [symbol, date_start, date_end]
+            [symbol.upper(), date_start, date_end]
         )
         data = cursor.fetchall()
 
@@ -98,11 +97,12 @@ def get_stock_data_by_date_drawl_chart(symbol, date_start, date_end):
 
     return stock_data_list
 
+
 def check_exist_stock_data(symbol):
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT symbol FROM stock_data WHERE symbol = %s",
-            [symbol]
+            [symbol.upper()]
         )
         data = cursor.fetchall()
 
@@ -116,7 +116,22 @@ def delete_stock_data(symbol):
     with connection.cursor() as cursor:
         cursor.execute(
             "DELETE FROM stock_data WHERE symbol = %s",
-            [symbol]
+            [symbol.upper()]
         )
+    # commit
+    connection.commit()
+    return None
 
+
+# insert data
+def insert(model: StockData):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO stock_data (symbol, date_time, timestamp, open, high, low, volume, close) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            [model.symbol, model.date_time, model.timestamp,
+             model.open, model.high, model.low, model.volume, model.close]
+        )
+    # commit
+    connection.commit()
     return None

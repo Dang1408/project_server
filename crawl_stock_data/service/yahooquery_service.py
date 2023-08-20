@@ -3,11 +3,11 @@ from typing import List
 
 from pandas import DataFrame
 
-
 from yahooquery import Ticker
 import datetime
 
-from crawl_stock_data.models import StockData
+from crawl_stock_data.models.stock_data_model import StockData
+
 
 def get_stock_data_by_yahoo_finance(symbol) -> list[StockData]:
     # https://pypi.org/project/yahooquery/
@@ -27,6 +27,13 @@ def get_stock_data_by_yahoo_finance(symbol) -> list[StockData]:
 
     for item in list_index_date:
         _, date_index = item
+
+        if len(date_index) == 25:
+            try:
+                date_index = datetime.datetime.strptime(date_index, '%Y-%m-%d %H:%M:%S%z')
+                date_index = date_index.strptime('%Y-%m-%d')
+            except ValueError:
+                print(f"The date string '{date_index}' does not match the format.")
 
         data_row = data.loc[(symbol, date_index)]
         datetime_obj = datetime.datetime.combine(date_index, datetime.time())

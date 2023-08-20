@@ -42,6 +42,5 @@ class StockData(models.Model):
             'high': self.high,
             'low': self.low,
             'close': self.close,
-            'volume': self.volume,
-            'adj_close': self.adj_close
+            'volume': self.volume
         }

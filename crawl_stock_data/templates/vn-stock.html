@@ -24,7 +24,6 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datetimepicker/4.17.47/js/bootstrap-datetimepicker.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.5/css/jquery.dataTables.css" />
     <script src="https://code.highcharts.com/stock/indicators/pivot-points.js"></script>
     <script src="https://code.highcharts.com/stock/indicators/ema.js"></script>
     <script src="https://code.highcharts.com/stock/indicators/macd.js"></script>
@@ -41,7 +40,7 @@
             </a>
             <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                 <li class="nav-item">
-                  <a class="nav-link" aria-current="page" href="http://127.0.0.1:8000">NYSE stock</a>
+                  <a class="nav-link active" aria-current="page" href="http://127.0.0.1:8000">NYSE stock</a>
                 </li>
                 <li class="nav-item">
                   <a class="nav-link" href="http://127.0.0.1:8000/stock-vietnam">Viet Nam stock</a>
@@ -60,40 +59,17 @@
             <div class="row">
                 <div class="col-lm-12">
                     <form class="" id="search">
-                        <div class="row" style=" margin-top: 2rem;">
-                          <div class="col-md-6">
-                              <div class="row">
-                                <label class="col-md-3 label-on-left">From</label>
-                                <div class="col-md-9">
-                                  <input name="from-date" type="text" class="form-control" autocomplete="false" required>
-                                </div>
-                              </div>
-                          </div>
-                          <div class="col-md-6">
-                            <div class="row">
-                                <label class="col-md-3 label-on-left">To</label>
-                                <div class="col-md-9">
-                                <input id="to-date" name="to-date" type="text" class="form-control" autocomplete="false" required>
-                                </div>
-                            </div>
-                          </div>
-                        </div>
-                        <div class="row" style=" margin-top: 2rem;">
-                            <div class="row">
-                                <label class="col-md-3 label-on-left">Stock symbol</label>
-                                <div class="col-md-9">
-                                  <input name="symbol" type="text" class="form-control" autocomplete="false">
+                        <div class="row">
+                            <div class="col-md-5">
+                                <div class="mb-3">
+                                  <label for="formFile" class="form-label">Input file CSV for VietNam stock</label>
+                                  <input class="form-control" type="file" id="formFile">
                                 </div>
                             </div>
                         </div>
-{#                        <div class="row" style=" margin-top: 2rem;">#}
-{#                            <label class="col-md-5 label-on-left">Số ngày dự đoán</label>#}
-{#                            <div class="col-md-7">#}
-{#                              <input name="the_number_date"  class="form-control" autocomplete="false" >#}
-{#                            </div>#}
-{#                        </div>#}
+                        <input class="form-control" id="stock-symbol" hidden="hidden" value="">
                         <div class="pull-right">
-                          <button class="btn btn-primary" type="submit" style="float: left">Search
+                          <button class="btn btn-primary" type="submit" style="float: left">Import
                           </button>
                         </div>
                     </form>
@@ -102,14 +78,10 @@
 
             <!-- row -->
             <div class="row" id="line-chart" style="display: none">
-                <div class="col-sm-8">
+                <div class="col-sm-12">
                     <div class="tm-block">
                         <div id="lineChart"></div>
                     </div>
-                </div>
-                <div class="col-sm-4">
-                    <table id="profitTable" class="display">
-                    </table>
                 </div>
             </div>
 
@@ -121,8 +93,8 @@
                               <label class="col-md-3 label-on-left">Predicted model</label>
                             <div class="col-md-9">
                               <select name="model" class="form-control">
-                                <option value="LSTM">LSTM</option>
                                   <option selected value="SVM">SVM</option>
+                                  <option value="LSTM">LSTM</option>
                               </select>
                             </div>
                           </div>
@@ -162,27 +134,68 @@
     <script src="{% static 'js/index.js' %}"></script>
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.5/js/jquery.dataTables.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.0.18/dist/sweetalert2.all.min.js"></script>
     <script>
         $(document).ready(function(){
-            initDateTimepicker();
-
-            initDatatableCompareProfit("");
-
-            $('form#search').submit(function (e) {
+            $("form#search").submit(function (e) {
                 e.preventDefault();
 
-                let from_date = $('input[name="from-date"]').val();
-                let to_date = $('input[name="to-date"]').val();
-                let symbol = $('input[name="symbol"]').val();
+                var formData = new FormData(this);
+                formData.append('file', $('#formFile')[0].files[0]);
 
-                draw_chart_with_data(symbol, from_date, to_date);
+                if (!$('#formFile')[0].files[0]) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Oops...',
+                        text: 'Please choose file csv',
+                    })
+                    return;
+                }
+
+                $.ajax({
+                    url: "http://127.0.0.1:8000/api/upload-vn-stock",
+                    type: "POST",
+                    data: formData,
+                    contentType: false,
+                    processData: false,
+                    beforeSend: function () {
+                        Swal.fire({
+                            title: 'Please wait a few seconds',
+                            html: 'We are processing your request',
+                            allowOutsideClick: false,
+                            onBeforeOpen: () => {
+                                Swal.showLoading()
+                            },
+                        })
+                    },
+                    success: function (data) {
+                        data = data.data;
+                        $("#stock-symbol").val(data.symbol);
+                        var temp_data = data.stock_data.map(item => {
+                            return [parseInt(item.date), parseFloatAndFix(item.open), parseFloatAndFix(item.high),
+                                    parseFloatAndFix(item.low), parseFloatAndFix(item.close)]
+                        })
+                        render_chart_with_buy_sell_signal(temp_data);
+                        $("#line-chart").show();
+                        $("#show-before-searching").show();
+                    },
+                    error: function (data) {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Oops...',
+                            text: data.responseJSON.error,
+                        })
+                    },
+                    complete: function () {
+                        Swal.close()
+                    }
+                })
+
             });
 
             $('#predicted').click(function (e) {
                 let model = $('select[name="model"]').val();
-                let symbol = $('input[name="symbol"]').val();
+                let symbol = $('input[id="stock-symbol"]').val();
                 $.ajax({
                     url: 'http://127.0.0.1:8000/api/model/predict-next-date',
                     data : JSON.stringify({
@@ -210,7 +223,7 @@
                     Swal.fire({
                         icon: 'error',
                         title: 'Oops...',
-                        text: data.error,
+                        text: data.responseJSON.error,
                         footer: '<a href="#">Why do I have this issue?</a>'
                       });
                 });
