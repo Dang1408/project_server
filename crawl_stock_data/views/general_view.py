@@ -1,18 +1,23 @@
 import math
-from datetime import timezone
+from datetime import timezone, timedelta
 
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 import json
-from crawl_stock_data.dao import *
+from crawl_stock_data.dao.stock_data_dao import *
+from crawl_stock_data.models.predicted_stock_value_model import PredictedStockValueModel
 from crawl_stock_data.service.handle_data_service import *
 from crawl_stock_data.service.predict_stock_service import *
 from crawl_stock_data.service.yahooquery_service import get_stock_data_by_yahoo_finance
 import pandas as pd
 import pytz
 from pandas_market_calendars import get_calendar
+import crawl_stock_data.dao.predicted_stock_value_dao as predicted_stock_data_dao
+from crawl_stock_data.utils.date_util import *
+from crawl_stock_data.training.SVM import SVM_model
+import pandas_ta as ta
 
 
 # Create your views here.
@@ -36,26 +41,25 @@ def get_stock_value_by_date_drawl_chart(request):
     if not check_exist_stock_data(symbol):
         return JsonResponse({'error': 'This stock symbol does not extinct or be invalid'}, status=400)
 
-    stock_data_list = get_stock_data_by_date(symbol, date_start, date_end)
+    stock_data_list = get_stock_data(symbol)
+    stock_data_list = pd.DataFrame.from_records([s.to_dict() for s in stock_data_list])
+
+    stock_data_list["Date"] = pd.to_datetime(stock_data_list["date"])
+    # set date_time to index
+    stock_data_list.set_index('Date', inplace=True)
+    stock_data_list = stock_data_list.sort_index(ascending=True)
 
     # get all the value of stock_data_list dataframe and convert to json format.
     # Get the value of each row and the value of index (convert to JS timestamp)
 
-    response_data = []
-    for row in stock_data_list:
-        date_object = datetime.strptime(row.date_time, '%Y-%m-%d')
-        utc_timezone = pytz.timezone('UTC')
-        date_object_utc = utc_timezone.localize(date_object)
+    stock_data_list.ta.macd(fast=12, slow=26, signal=9, append=True)
+    handle_stock_service = HandleStockDataService(stock_data_list)
 
-        temp_dic = {
-            "date": int(date_object_utc.timestamp()) * 1000,
-            "open": row.open,
-            "high": row.high,
-            "low": row.low,
-            "close": row.close,
-            "volume": row.volume,
-        }
-        response_data.append(temp_dic)
+    stock_data_list = handle_stock_service.add_buy_sell_signals()
+
+    stock_data_list = stock_data_list[date_start:date_end]
+    # convert to json format
+    response_data = stock_data_list.to_dict('records')
 
     return JsonResponse(response_data, safe=False)
 
@@ -85,34 +89,6 @@ def crawl_stock_data(request):
     return JsonResponse({'message': 'successfully'})
 
 
-def get_the_next_date(the_next_date_timestamp, exchange='NYSE'):
-    # Create a trading calendar for the specified exchange
-    trading_calendar = get_calendar(exchange)
-
-    # Convert the timestamp to a Python datetime object
-    the_next_date = datetime.fromtimestamp(the_next_date_timestamp / 1000)
-
-    # Convert the offset-naive datetime to an offset-aware datetime using UTC timezone
-    the_next_date = pytz.utc.localize(the_next_date)
-
-    # Get the next trading date after the given date
-    next_trading_dates = trading_calendar.valid_days(start_date=the_next_date,
-                                                     end_date=the_next_date + pd.Timedelta(days=365))
-    # Find the first trading date after the given date
-    for date in next_trading_dates:
-        if date > the_next_date:
-            next_trading_date = date
-            break
-    else:
-        # If no trading date is found within the next year, return the last date in the list
-        next_trading_date = next_trading_dates[-1]
-
-    # Access the next trading date and get its timestamp
-    next_trading_date_timestamp = int(next_trading_date.timestamp() * 1000)
-
-    return next_trading_date_timestamp
-
-
 @csrf_exempt
 @require_POST
 def predict_stock_value_on_the_next_date(request):
@@ -128,48 +104,65 @@ def predict_stock_value_on_the_next_date(request):
 
     stock_data_list = get_stock_data(symbol)
     stock_data_list = pd.DataFrame.from_records([s.to_dict() for s in stock_data_list])
-
     predict_stock_service = PredictStockService(symbol, stock_data_list)
+    date_start, date_end = get_the_time_of_n_week_ago(3)
+
+    # get the data close from the database by the symbol and the date in 2023
+    stock_data_list = get_stock_data_by_date_drawl_chart(symbol, date_start, date_end)
+
+    actual_value = [{
+        "timestamp": convert_to_GMT_timestamp(data.date_time),
+        "close": data.close
+    } for data in stock_data_list]
+
+    the_next_date = get_the_next_date(stock_data_list[-1].date_time, market)
 
     if model == 'SVM':
-        prediction = predict_stock_service.next_date_with_SVM_model()
-    elif model == 'LSTM':
-        # prediction, rmse, mape = predicted_stock_by_LSTM_model(symbol, int(the_number_date))
-        # TODO
-        None
+        predicted_stock_value = predicted_stock_data_dao.get_predicted_stock_value_by_date(symbol, the_next_date, model)
+
+        if predicted_stock_value is None:
+            prediction = predict_stock_service.next_date_with_SVM_model()
+
+            # save the predicted value to the database
+            save_predicted_stock_value_log(symbol, model, prediction, the_next_date)
+        else:
+            prediction = predicted_stock_value.predicted_value
     else:
         return JsonResponse({'error': 'Invalid or missing parameter'}, status=400)
 
     if prediction is None:
         return JsonResponse({'error': 'Having error'}, status=400)
 
-    # get the data close from the database by the symbol and the date in 2023
-    stock_data_list = get_stock_data_by_date_drawl_chart(symbol, '2023-07-25', '2023-12-31')
-    actual_value = [{
-        "timestamp": convert_to_UTC_timespamp(data.timestamp),
-        "close": data.close
-    } for data in stock_data_list]
-
-    extracted_data = []
-
-    the_next_date_timestamp = actual_value[-1]['timestamp']
-
-    # Get the last record in actual_value and add it into extracted_data
-    extracted_data.append({"timestamp": the_next_date_timestamp, "close": actual_value[-1]['close']})
-    the_next_date_timestamp = get_the_next_date(the_next_date_timestamp, market)
-    # finally, add the predicted value into extracted_data
-    extracted_data.append({"timestamp": the_next_date_timestamp, "close": prediction})
+    predicted_stock_value_list = predicted_stock_data_dao.get_from_date_to_date(symbol, model, date_start)
+    extracted_data = [{
+        "timestamp": convert_to_GMT_timestamp(data.predicted_date_at),
+        "close": data.predicted_value
+    } for data in predicted_stock_value_list]
 
     return JsonResponse({'actual_data': actual_value, 'predicted_data': extracted_data}, safe=False)
 
 
-# @csrf_exempt
-# @require_GET
-# def test_training_model(request):
-#     training_model()
-#     return JsonResponse({'message': 'successfully'})
+@csrf_exempt
+@require_POST
+def test_training_model(request):
+    data = json.loads(request.body)
+
+    symbol = data.get('symbol', None)
+    model = data.get('model', None)
+
+    if symbol is None or model is None:
+        return JsonResponse({'error': 'Invalid or missing parameter'}, status=400)
 
 
-def convert_to_UTC_timespamp(timestamp):
-    UTC_timestamp = datetime.fromtimestamp(int(timestamp) / 1000, timezone.utc)
-    return int(UTC_timestamp.timestamp() * 1000)
+def save_predicted_stock_value_log(symbol, model, prediction_value, date):
+    date_time = datetime.strptime(date, '%Y-%m-%d')
+    predicted_stock_value_model = PredictedStockValueModel()
+
+    predicted_stock_value_model.symbol = symbol
+    predicted_stock_value_model.predicted_date_at = date
+    predicted_stock_value_model.predicted_model = model
+    predicted_stock_value_model.is_success = True
+    predicted_stock_value_model.predicted_value = prediction_value
+    predicted_stock_value_model.predicted_date_at_in_timestamp = int(date_time.timestamp() * 1000000)
+    predicted_stock_value_model.created_at = int(datetime.now().timestamp() * 1000000)
+    predicted_stock_value_model.save()

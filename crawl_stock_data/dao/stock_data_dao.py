@@ -72,7 +72,7 @@ def get_stock_data_by_date_drawl_chart(symbol, date_start, date_end):
 
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT symbol, timestamp, open, high, low, volume, close "
+            "SELECT symbol, timestamp, open, high, low, volume, close, date_time "
             "FROM stock_data "
             "WHERE symbol = %s AND timestamp between %s AND %s order by timestamp asc",
             [symbol.upper(), date_start, date_end]
@@ -92,6 +92,7 @@ def get_stock_data_by_date_drawl_chart(symbol, date_start, date_end):
             low=row[4],
             volume=row[5],
             close=row[6],
+            date_time=row[7]
         )
         stock_data_list.append(stock_data_obj)
 

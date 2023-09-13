@@ -31,13 +31,13 @@ def get_training_log(symbol):
     return training_log_list
 
 
-def get_training_log_by_date(symbol, date):
+def get_training_log_by_date(symbol, model, date):
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT id, symbol, created_at, model, training_date_at, is_success "
             "FROM training_log "
-            "WHERE symbol = %s AND training_date_at = %s",
-            [symbol.upper(), date]
+            "WHERE symbol = %s and model = %s AND training_date_at = %s",
+            [symbol.upper(), model, date]
         )
         data = cursor.fetchall()
 

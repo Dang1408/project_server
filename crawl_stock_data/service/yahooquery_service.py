@@ -28,7 +28,7 @@ def get_stock_data_by_yahoo_finance(symbol) -> list[StockData]:
     for item in list_index_date:
         _, date_index = item
 
-        if len(date_index) == 25:
+        if len(str(date_index)) == 25:
             try:
                 date_index = datetime.datetime.strptime(date_index, '%Y-%m-%d %H:%M:%S%z')
                 date_index = date_index.strptime('%Y-%m-%d')

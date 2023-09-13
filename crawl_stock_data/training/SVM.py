@@ -10,7 +10,7 @@ from crawl_stock_data.service.process_data_service import ProcessDataService
 
 
 class SVM_model():
-    def __init__(self, symbol, path):
+    def __init__(self, symbol, path, training_for_test: bool = False):
         self.symbol = symbol
 
         self.input_feature = ['open', 'high', 'low', 'close', 'volume',
@@ -29,8 +29,9 @@ class SVM_model():
                                19: "BBP_3_2.0", 20: "min_price_3", 21: "max_price_3",
                                22: "mid_price", 23: "tema_8"}
         self.path = path
+        self.training_for_test = training_for_test
 
-    def training(self):
+    def training(self, specific_date=None):
 
         # get the data from database
         data = get_stock_data(self.symbol)
@@ -49,27 +50,19 @@ class SVM_model():
         # Filter out ConvergenceWarning
         warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
+        if self.training_for_test:
+            self.training_model_from_2013_to_2022(data)
+            return
+
+        if specific_date is not None:
+            self.training_model_before_inputting_date(data, specific_date)
+            return
+
         if self.check_file_existence():
-            fileSVM = joblib.load(self.path)
-            self.online_learning_model(fileSVM, data)
+            os.remove(self.path)
+            self.training_model_and_save_checkpoint(data)
         else:
             self.training_model_and_save_checkpoint(data)
-
-    def online_learning_model(self, file, data):
-        print("Online learning")
-        # load the model from file
-        model = file
-
-        # get the last date of the data
-        train_X, y = self.split_and_scale_data(data)
-        last_date = train_X.index[-1]
-        last_date_ouput = y.index[-1]
-
-        # online update
-        model = model.partial_fit(last_date, last_date_ouput)
-
-        # save the model
-        joblib.dump(model, self.path)
 
     def training_model_and_save_checkpoint(self, data):
         print("Training model")
@@ -102,8 +95,7 @@ class SVM_model():
 
         # Scale input dataset
         scaler = StandardScaler()
-        scaler.fit(X)
-        X = scaler.transform(X)
+        X = scaler.fit_transform(X)
 
         # Create the dataframe
         train_X = pd.DataFrame(X)
@@ -114,3 +106,35 @@ class SVM_model():
 
     def check_file_existence(self):
         return os.path.exists(self.path)
+
+    def training_model_before_inputting_date(self, data, date):
+        print("Training model")
+        # split the data into input and output for training
+        train_X, y = self.split_and_scale_data(data)
+
+        train_X = train_X[:date]
+        y = y[:date]
+
+        # Create the model
+        svr = SVR(C=1, kernel='linear', max_iter=5000)
+        svr_model = svr.fit(train_X, y)
+
+        # Save the model
+        joblib.dump(svr_model, self.path)
+
+    def training_model_from_2013_to_2022(self, data):
+        print("Training model")
+        # split the data into input and output for training
+        train_x, y = self.split_and_scale_data(data)
+
+        train_x = train_x['2013-01-01': '2022-12-31']
+        y = y['2013-01-01': '2022-12-31']
+
+        # Create the model
+        svr = SVR(C=1, kernel='linear', max_iter=5000)
+        svr_model = svr.fit(train_x, y)
+
+        # Save the model
+        joblib.dump(svr_model, self.path)
+
+

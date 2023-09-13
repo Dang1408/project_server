@@ -711,4 +711,5 @@ input[type="checkbox"]:focus {
 /* Ensure that the container of the datetimepicker has a non-static position */
 .container {
     position: relative;
+    max-width: 100%;
 }

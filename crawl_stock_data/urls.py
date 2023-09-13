@@ -9,6 +9,8 @@ urlpatterns = [
     path('api/stock/crawl-stock-data', nyse_view.crawl_stock_data, name='crawl_stock_data'),
     path('api/model/predict-next-date', general_view.predict_stock_value_on_the_next_date,
          name='predict_stock_value_next_date'),
+    path('api/test', general_view.test_training_model, name='test_training_model'),
+    path('api/get-stock-symbol', nyse_view.get_stock_symbols, name='get_stock_symbol'),
     path('', nyse_view.nyse_view, name='nyse_view'),
     path('stock-vietnam', vnindex_view.vn_stock_view, name='vn_stock_view'),
 ]

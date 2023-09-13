@@ -1,7 +1,7 @@
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 import joblib
-
+import os
 from crawl_stock_data.service.process_data_service import ProcessDataService
 
 
@@ -27,9 +27,8 @@ class PredictStockService:
                                22: "mid_price", 23: "tema_8"}
 
     def scale_data(self, data: pd.DataFrame):
-
-        # Fix scale of trainning data
-        temp_data = data['2013-01-01':'2023-12-31']
+        # Fix scale of training data
+        temp_data = data['2013-01-01': '2023-12-31']
 
         # scale data
         X = temp_data[self.input_feature]
@@ -64,5 +63,51 @@ class PredictStockService:
         prediction = svm_model.predict(data_for_validation)
         prediction = pd.DataFrame(prediction)
         prediction = prediction.rename(columns={0: "predicted_mean"})
+
+        return prediction[['predicted_mean']].values[0][0]
+
+    def predict_in_the_time_with_SVM_model(self, date_start, date_end):
+        path_to_file = ('/mnt/learning/last_project/app/server/stock_server/crawl_stock_data/'
+                        'training/checkpoint/svm/SVM_{}_13-22.pkl'.format(self.symbol.upper()))
+
+        svm_model = joblib.load(path_to_file)
+
+        # process data
+        processDataService = ProcessDataService(self.dataframe)
+        data = processDataService.process_NYSE_stock_data()
+
+        # scale data
+        data_for_validation = self.scale_data(data)
+
+        data_for_validation = data_for_validation[date_start: date_end]
+        # predict the stock value
+        prediction = svm_model.predict(data_for_validation)
+        prediction = pd.DataFrame(prediction)
+        prediction = prediction.rename(columns={0: "predicted_mean"})
+
+        return prediction
+
+    def predict_in_the_specific_date_with_SVM_model(self, date):
+        path = ('/mnt/learning/last_project/app/server/stock_server/'
+                'crawl_stock_data/training/checkpoint/online_learning_model'
+                '/svm/tmp/SVM_{}_13-23({}).pkl'.format(self.symbol, date))
+
+        svm_model = joblib.load(path)
+
+        # process data
+        processDataService = ProcessDataService(self.dataframe)
+        data = processDataService.process_NYSE_stock_data()
+
+        # scale data
+        data_for_validation = self.scale_data(data)
+
+        data_for_validation = data_for_validation.loc[[date]]
+        # predict the stock value
+        prediction = svm_model.predict(data_for_validation)
+        prediction = pd.DataFrame(prediction)
+        prediction = prediction.rename(columns={0: "predicted_mean"})
+
+        if os.path.exists(path):
+            os.remove(path)
 
         return prediction[['predicted_mean']].values[0][0]

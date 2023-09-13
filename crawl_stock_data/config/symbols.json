@@ -1,0 +1,80 @@
+{
+  "general_symbol": [
+    {
+      "symbol": "AAPL",
+      "name": "Apple"
+    },
+    {
+      "symbol": "GOOGL",
+      "name": "Alphabet (Class A Shares)"
+    },
+    {
+      "symbol": "AMD",
+      "name": "Advanced Micro Devices"
+    },
+    {
+      "symbol": "MSFT",
+      "name": "Microsoft"
+    },
+    {
+      "symbol": "NVDA",
+      "name": "NVIDIA"
+    },
+    {
+      "symbol": "TSLA",
+      "name": "Tesla"
+    },
+    {
+      "symbol": "AMZN",
+      "name": "Amazon"
+    },
+    {
+      "symbol": "CRM",
+      "name": "Salesforce"
+    },
+    {
+      "symbol": "NFLX",
+      "name": "Netflix"
+    },
+    {
+      "symbol": "GE",
+      "name": "General Electric"
+    },
+    {
+      "symbol": "V",
+      "name": "Visa"
+    },
+    {
+      "symbol": "AVGO",
+      "name": "Broadcom"
+    },
+    {
+      "symbol": "INTC",
+      "name": "Intel"
+    },
+    {
+      "symbol": "DIS",
+      "name": "Walt Disney"
+    },
+    {
+      "symbol": "BKNG",
+      "name": "Booking Holdings"
+    },
+    {
+      "symbol": "XOM",
+      "name": "Exxon Mobil"
+    },
+    {
+      "symbol": "ORCL",
+      "name": "Oracle"
+    },
+    {
+      "symbol": "ADBE",
+      "name": "Adobe"
+    },
+    {
+      "symbol": "CSCO",
+      "name": "Cisco Systems"
+    }
+  ]
+}

@@ -13,70 +13,26 @@ class HandleStockDataService:
     def __init__(self, data: pd.DataFrame):
         self.data = data
 
-    @staticmethod
-    def MACD_Strategy(df, risk):
-        MACD_Buy = []
-        MACD_Sell = []
-        position = False
+    def add_buy_sell_signals(self):
+        # Create a copy of the DataFrame to avoid modifying the original data
+        df_copy = self.data.copy()
 
-        for i in range(0, len(df)):
-            if df['MACD_12_26_9'][i] > df['MACDs_12_26_9'][i]:
-                MACD_Sell.append(np.nan)
-                if position == False:
-                    MACD_Buy.append(df['adj_close'][i])
-                    position = True
-                else:
-                    MACD_Buy.append(np.nan)
-            elif df['MACD_12_26_9'][i] < df['adj_close'][i]:
-                MACD_Buy.append(np.nan)
-                if position == True:
-                    MACD_Sell.append(df['adj_close'][i])
-                    position = False
-                else:
-                    MACD_Sell.append(np.nan)
-            elif position == True and df['adj_close'][i] < MACD_Buy[-1] * (1 - risk):
-                MACD_Sell.append(df["adj_close"][i])
-                MACD_Buy.append(np.nan)
-                position = False
-            elif position == True and df['adj_close'][i] < df['adj_close'][i - 1] * (1 - risk):
-                MACD_Sell.append(df["adj_close"][i])
-                MACD_Buy.append(np.nan)
-                position = False
-            else:
-                MACD_Buy.append(np.nan)
-                MACD_Sell.append(np.nan)
+        if ('MACD_12_26_9' not in df_copy.columns
+                and 'MACDs_12_26_9' not in df_copy.columns
+                and 'MACDh_12_26_9' not in df_copy.columns):
+            df_copy.ta.macd(fast=12, slow=26, signal=9, append=True)
 
-        df['MACD_Buy_Signal_price'] = MACD_Buy
-        df['MACD_Sell_Signal_price'] = MACD_Sell
+        # Define conditions for buy and sell signals
+        buy_condition = (df_copy['MACD_12_26_9'] > df_copy['MACDs_12_26_9']) & (
+                    df_copy['MACD_12_26_9'].shift(1) <= df_copy['MACDs_12_26_9'].shift(1))
+        sell_condition = (df_copy['MACD_12_26_9'] < df_copy['MACDs_12_26_9']) & (
+                    df_copy['MACD_12_26_9'].shift(1) >= df_copy['MACDs_12_26_9'].shift(1))
 
-        return df
+        # Create columns for buy and sell signals
+        df_copy['Buy_Signal'] = buy_condition
+        df_copy['Sell_Signal'] = sell_condition
 
-    @staticmethod
-    def MACD_color(data: pd.DataFrame):
-        MACD_color = []
-        for i in range(0, len(data)):
-            if data['MACDh_12_26_9'][i] > data['MACDh_12_26_9'][i - 1]:
-                MACD_color.append(True)
-            else:
-                MACD_color.append(False)
-        return MACD_color
-
-    def add_buy_or_sell_signal(self):
-        # check the data is dataframe or not
-
-        process_data_service = ProcessDataService(self.data)
-
-        data = process_data_service.rename_column_and_set_type(None)
-
-        # calculate the macd
-        macd = ta.macd(data['close'])
-
-        data = pd.concat([data, macd], axis=1).reindex(data.index)
-
-        data = self.MACD_Strategy(data, 0.025)
-        data['positive'] = self.MACD_color(data)
-
-        return data
+        return df_copy
 
     def parse_df_to_stock_data_model(self, name):
         stock_data_list = []

@@ -47,28 +47,55 @@ function initDateTimepicker() {
 }
 
 function initDatatableCompareProfit(data) {
-    $('#profitTable').DataTable({
+    if (!$.fn.DataTable.isDataTable('#profitTable')) {
+        $('#profitTable').DataTable({
+            "searching": false,
+            "paging": false,
+            "info": false,
+            "ordering": false,
+            "data": data,
+            "columns": [
+                {title: "Symbol", data: "symbol"}, // Symbol column
+              {
+                  title:"Actual profit", data:"profit_actual", redner: function(data, type, row) {
+                      return data;
+                  }
+              }, // Actual Profit column (right-aligned)
+              {
+                  title:"Predicted profit", data:"profit_model", redner: function(data, type, row) {
+                      return data;
+                  }
+              } // Predicted Profit column (right-aligned)
+            ],
+            "columnDefs": [{
+              "targets": "_all",
+              "className": "dt-center"
+            }],
+            "language": {
+              "emptyTable": "No data available",
+              "zeroRecords": "No matching records found"
+            },
+            "caption": "Comparison of Profit using MACD Strategy (Actual vs. Predicted)"
+      });
+    } else {
+        $("#profitTable").DataTable().clear().rows.add(data).draw();
+    }
+
+}
+
+function initDatatableStockData(data) {
+    $("#symbol-table").DataTable({
         "searching": false,
         "paging": false,
         "info": false,
         "ordering": false,
-        "data": [{
-          "symbol": "AAPL",
-          "profit_actual": 11.91000366210929,
-          "profit_model": 11.91000366210929
-        }],
+        "data": data,
         "columns": [
-            {title: "Symbol", data: "symbol"}, // Symbol column
-          {
-              title:"Actual profit", data:"profit_actual", redner: function(data, type, row) {
-                  return parseFloatAndFix(data)
-              }
-          }, // Actual Profit column (right-aligned)
-          {
-              title:"Predicted profit", data:"profit_model", redner: function(data, type, row) {
-                  return parseFloatAndFix(data)
-              }
-          } // Predicted Profit column (right-aligned)
+            {title: "#", data: "symbol", render: function(data, type, row, meta) {
+                return meta.row + 1;
+            }, width: "10%"}, // Symbol column
+            {title: "Symbol", data: "symbol", width: "30"}, // Symbol column
+            {title: "Company Name", data: "name", width: "50%"}, // Company Name column
         ],
         "columnDefs": [{
           "targets": "_all",
@@ -78,65 +105,6 @@ function initDatatableCompareProfit(data) {
           "emptyTable": "No data available",
           "zeroRecords": "No matching records found"
         },
-        "caption": "Comparison of Profit using MACD Strategy (Actual vs. Predicted)"
-      });
-}
-
-function render_chart(data, volume) {
-    Highcharts.stockChart('lineChart', {
-        rangeSelector: {
-            selected: 1
-        },
-        title: {
-            text: 'AAPL Stock Price'
-        },
-        series: [
-            {
-                type: 'candlestick',
-                name: 'Stock Prices',
-                data: data
-            },
-            {
-                type: 'column', // Column type for volume series
-                name: 'Volume',
-                data: volume,
-                yAxis: 1 // Use the secondary y-axis for volume
-            },
-            {
-                name: 'Moving Average',
-                type: 'sma', // Simple Moving Average
-                linkedTo: 'candlestick', // The data series to which this indicator is linked
-                params: {
-                    period: 10 // Period for the moving average (e.g., 10 days)
-                }
-            }
-        ],
-        yAxis: [
-            { // Primary y-axis for candlestick and SMA
-                labels: {
-                    align: 'right',
-                    x: -3
-                },
-                title: {
-                    text: 'OHLC'
-                },
-                height: '60%',
-                lineWidth: 2
-            },
-            { // Secondary y-axis for volume
-                labels: {
-                    align: 'right',
-                    x: -3
-                },
-                title: {
-                    text: 'Volume'
-                },
-                top: '65%',
-                height: '35%',
-                offset: 0,
-                lineWidth: 2
-            }
-        ]
     });
 }
 
@@ -189,12 +157,20 @@ function draw_chart_with_data(symbol, date_start, date_end) {
         contentType: 'application/json',
     })
     .done(function(data){
-        var temp_data = data.map(item => {
-            return [parseInt(item.date), parseFloatAndFix(item.open), parseFloatAndFix(item.high),
-                    parseFloatAndFix(item.low), parseFloatAndFix(item.close)]
+        let temp_data = data.map(item => {
+            return{
+                time: item.date,
+                open: parseFloatAndFix(item.open),
+                high: parseFloatAndFix(item.high),
+                low: parseFloatAndFix(item.low),
+                close: parseFloatAndFix(item.close),
+                macd: item.MACD_12_26_9,
+                macds: item.MACDs_12_26_9,
+            }
+
         })
 
-        render_chart_with_buy_sell_signal(temp_data);
+        render_chart_with_macd(data);
         $("#line-chart").show();
         $("#show-before-searching").show();
     })
@@ -208,97 +184,178 @@ function draw_chart_with_data(symbol, date_start, date_end) {
     });
 }
 
-function addSignal(arg) {
-  arg.series.addPoint({
-    x: arg.point.x,
-    y: arg.direction === 'up' ? arg.point.high - arg.triangleOffset : arg.point.low + arg.triangleOffset,
-    marker: {
-      symbol: arg.direction === 'up' ? 'triangle' : 'triangle-down',
-      fillColor: arg.direction === 'up' ? 'green' : 'red',
-      radius: arg.size
-    }
-  });
-}
+function render_chart_with_macd(data) {
+    // Parse date strings into JavaScript Date objects
+    data.forEach(item => {
+        item.date = new Date(item.date).getTime();
+    });
 
-function render_chart_with_buy_sell_signal(data) {
-  Highcharts.stockChart('lineChart', {
-    chart: {
-      events: {
-        load() {
-          const chart = this;
-          const series = chart.series;
-          const macdSeries = series.find((s) => s.options.type === 'macd');
+    // Extract MACD and Signal Line data from the input data
+    const macdData = data.map(item => [item.date, item.MACD_12_26_9]);
+    const signalLineData = data.map(item => [item.date, item.MACDs_12_26_9]);
+    const closeData = data.map(item => [item.date, item.close]);
 
-          if (!macdSeries) {
-            return;
-          }
+    const buySignalData = data
+        .filter(item => item.Buy_Signal)
+        .map(item => ({
+            x: item.date,
+            y: item.close,
+        }));
 
-          const signalSeries = series.find((s) => s.options.type === 'scatter' && s.name === 'Signal');
+    const sellSignalData = data
+        .filter(item => item.Sell_Signal)
+        .map(item => ({
+            x: item.date,
+            y: item.close,
+        }));
 
-          if (!signalSeries) {
-            return;
-          }
-
-          const macdData = macdSeries.yData;
-          const signalData = [];
-
-          for (let i = 1; i < macdData.length; i++) {
-            const prevMACD = macdData[i - 1];
-            const currMACD = macdData[i];
-            const prevPoint = macdSeries.points[i - 1];
-            const currPoint = macdSeries.points[i];
-
-            if ((prevMACD <= 0 && currMACD > 0) || (prevMACD >= 0 && currMACD < 0)) {
-              signalData.push({
-                x: currPoint.x,
-                y: currMACD > 0 ? currPoint.high - 5 : currPoint.low + 5,
-                direction: currMACD > 0 ? 'up' : 'down',
-              });
+    console.log(buySignalData)
+    // Create the chart with two y-axes (panels)
+    Highcharts.stockChart('lineChart', {
+        chart: {
+            // backgroundColor: '#222',
+        },
+        title: {
+            text: 'NYSE Stock Chart with MACD and Signals',
+            style: {
+                color: '#C3BCDB',
+            },
+        },
+        rangeSelector: {
+            selected: 1,
+        },
+        yAxis: [{
+            title: {
+                text: 'Closing Price',
+                style: {
+                    color: '#C3BCDB',
+                },
+            },
+            labels: {
+                style: {
+                    color: '#C3BCDB',
+                },
+            },
+            height: '70%', // Set the height of the first panel
+        }, {
+            title: {
+                text: 'MACD',
+                style: {
+                    color: '#C3BCDB',
+                },
+            },
+            labels: {
+                style: {
+                    color: '#C3BCDB',
+                },
+            },
+            top: '75%', // Position the second panel below the first one
+            height: '25%', // Set the height of the second panel
+            offset: 0, // Align the second panel with the first one
+        }],
+        annotations: [{
+            labels: [{
+                point: {
+                    xAxis: 0, // x-axis for the annotation label
+                    yAxis: 0, // y-axis for the annotation label
+                    x: data[0].date, // x-coordinate (date)
+                    y: data[0].close, // y-coordinate (close price)
+                },
+                text: 'Close Price',
+                color: 'green', // Label text color
+                backgroundColor: 'white', // Label background color
+                borderColor: 'green', // Label border color
+                borderWidth: 1, // Label border width
+                shape: 'rect', // Label shape (rectangle)
+                padding: 5, // Label padding
+            }, {
+                point: {
+                    xAxis: 0, // x-axis for the annotation label
+                    yAxis: 1, // y-axis for the annotation label
+                    x: data[0].date, // x-coordinate (date)
+                    y: data[0].MACD_12_26_9, // y-coordinate (MACD value)
+                },
+                text: 'MACD (Blue Line)',
+                color: 'blue',
+                backgroundColor: 'white',
+                borderColor: 'blue',
+                borderWidth: 1,
+                shape: 'rect',
+                padding: 5,
+            }, {
+                point: {
+                    xAxis: 0, // x-axis for the annotation label
+                    yAxis: 1, // y-axis for the annotation label
+                    x: data[0].date, // x-coordinate (date)
+                    y: data[0].MACDs_12_26_9, // y-coordinate (Signal line value)
+                },
+                text: 'Signal Line (Red Line)',
+                color: 'red',
+                backgroundColor: 'white',
+                borderColor: 'red',
+                borderWidth: 1,
+                shape: 'rect',
+                padding: 5,
+            }]
+        }],
+        series: [{
+            type: 'line',
+            name: 'Closing Price',
+            data: closeData,
+            yAxis: 0, // Use the first y-axis (panel) for closing price
+            tooltip: {
+                valueDecimals: 2, // Number of decimals in tooltip when hovering over a data point
+                valueSuffix: ' USD', // Label for the tooltip when hovering over a data point
             }
-          }
+        }, {
+            type: 'line',
+            name: 'MACD',
+            data: macdData,
+            yAxis: 1, // Use the second y-axis (panel) for MACD
+            color: 'blue',
+            lineWidth: 2,
+            tooltip: {
+                valueSuffix: ' MACD', // Add a unit label to the tooltip
 
-          signalSeries.setData(signalData);
-        }
-      }
-    },
-
-    plotOptions: {
-      series: {
-        dataGrouping: {
-          enabled: false
-        }
-      }
-    },
-
-    series: [
-      {
-        type: 'candlestick',
-        name: 'Stock Data',
-          id: 'Stock Data',
-        data: data,
-      },
-      {
-        type: 'scatter',
-        name: 'Signal',
-        marker: {
-          symbol: 'triangle',
-          fillColor: 'green',
-          lineColor: 'black',
-          lineWidth: 1,
-          radius: 5,
-        },
-        data: [], // Empty data, will be filled dynamically in the load event
-      },
-      {
-        type: 'macd',
-        linkedTo: 'Stock Data', // Change this to 'candlestick'
-        params: {
-          shortPeriod: 12,
-          longPeriod: 26,
-          signalPeriod: 9,
-          period: 26,
-        },
-      },
-    ],
-  });
+            },
+        }, {
+            type: 'line',
+            name: 'Signal Line',
+            data: signalLineData,
+            yAxis: 1, // Use the second y-axis (panel) for the signal line
+            color: 'red',
+            lineWidth: 2,
+            tooltip: {
+                valueSuffix: ' Signal', // Add a unit label to the tooltip
+            },
+        }, {
+            type: 'scatter',
+            name: 'Buy Signals',
+            data: buySignalData,
+            marker: {
+                symbol: 'triangle',
+                fillColor: 'green',
+                lineColor: 'green', // Border color of the marker
+                radius : 8
+            },
+            yAxis: 0, // Use the first y-axis (panel) for buy signals
+            tooltip: {
+                pointFormat: '<span style="color:green">●</span> Buy Signal<br>',
+            },
+        }, {
+            type: 'scatter',
+            name: 'Sell Signals',
+            data: sellSignalData,
+            marker: {
+                symbol: 'triangle-down',
+                fillColor: 'red',
+                lineColor: 'red',
+                radius : 8
+            },
+            yAxis: 0, // Use the first y-axis (panel) for sell signals
+            tooltip: {
+                pointFormat: '<span style="color:red">●</span> Sell Signal<br>',
+            },
+        }],
+    });
 }
